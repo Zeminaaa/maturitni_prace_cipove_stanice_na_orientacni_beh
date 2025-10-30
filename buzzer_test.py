@@ -11,8 +11,11 @@ ctvrta = 100
 pata = 60
 sesta = 40
 
+
+
 # Create a PWM object representing pin 14 and assign it to the buzzer variable
-buzzer = machine.PWM(machine.Pin(17))
+buzzer = machine.PWM(machine.Pin(25))
+buzzer.duty(0)
 
 # Define a tone function that takes as input a Pin object representing the buzzer, a frequency in Hz, and a duration in milliseconds
 def tone(pin, frequency, duration):
@@ -33,13 +36,14 @@ def ne_sound():
     tone(buzzer, pata, 250)
     time.sleep_ms(100)
     tone(buzzer, sesta, 500)
+    
+def bud_zticha():
+    tone(buzzer, prvni, 0)
+    time.sleep_ms(1)
+    
 
 
-ne_sound()
+#ne_sound()
 time.sleep(1)
-ano_sound()
-
-
-
-
-
+#ano_sound()
+bud_zticha()
