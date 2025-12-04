@@ -1,16 +1,11 @@
 import mfrc522     # https://github.com/cefn/micropython-mfrc522
 from machine import Pin, SPI, PWM
 from time import sleep_ms
-import buzzer_test # Předpokládá se existence tohoto modulu
-import dip_switch_setup
+import setup
 
-STATION_ID = dip_switch_setup.station_id()
-
-
-# --- Nastavení Hardwaru ---
 buzzer = PWM(Pin(25))
 
-# RFID čtečka - SPI sběrnice
+# RFID ctecka - SPI sbernice
 sck = Pin(18, Pin.OUT)
 mosi = Pin(23, Pin.OUT)
 miso = Pin(19, Pin.IN)
@@ -18,72 +13,74 @@ miso = Pin(19, Pin.IN)
 cs = Pin(5, Pin.OUT)
 rst = Pin(17, Pin.OUT)
 
-# Vestavěná LED simulující relé zámku
+# vestavena LED simulujici rele zamku
 rele = Pin(2, Pin.OUT)
 
-vspi = SPI(2, baudrate=100000, polarity=0, phase=0, sck=sck, mosi=mosi, miso=miso)
+# BAUD RATE ZNIZEN NA 50000 PRO VETSI STABILITU
+# Původní kód ve vašem reader_test.py měl 100000, ale ponecháme 50000 pro stabilitu
+vspi = SPI(2, baudrate=50000, polarity=0, phase=0, sck=sck, mosi=mosi, miso=miso)
 
 rdr = mfrc522.MFRC522(spi=vspi, gpioRst=rst, gpioCs=cs)
 
-buzzer_test.bud_zticha()
+setup.bud_zticha()
 
 print('Prilozte kartu')
 
-# Klíč pro autentizaci (výchozí pro Mifare Classic)
-KEY = b'\xff\xff\xff\xff\xff\xff'
-# Data pro zápis (musí být přesně 16 bytů)
-DATA_TO_WRITE = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+# --- KONSTANTY PRO CTENI BLOKU ---
+TARGET_BLOCKS=[4,8,12,16,20,24,28,32,26,40,44,48,52,56,60]                               
+KEY = b'\xff\xff\xff\xff\xff\xff'               
 
-
-def do_write():
-    raw_uid = [0, 0, 0, 0] 
-
-    try:
-        while True:
+while True:
+    rele.off()
+    (stat, tag_type) = rdr.request(rdr.REQIDL)
+    
+    if stat == rdr.OK:
+        for target_block in TARGET_BLOCKS:
+            print(f"čte se blok: {target_block}")
+            
             rele.off()
             (stat, tag_type) = rdr.request(rdr.REQIDL)
-
+    
             if stat == rdr.OK:
-
-                (stat, raw_uid_temp) = rdr.anticoll()
-
+                (stat, raw_uid) = rdr.anticoll()
+                
                 if stat == rdr.OK:
-                    raw_uid = raw_uid_temp
-                    print("--- New card detected ---")
-                    print("  - uid  : 0x%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
-                    print("")
-
+                    print('Detekovano!')
+                    setup.ano_sound()
+                    
+                    print('type: 0x%02X' % tag_type)
+                    # Upraveno zobrazení UID, protože Mifare Classic má 4 byty.
+                    print('uid: %02X-%02X-%02X-%02X' % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                    
+                    # --- PRIDANE CTENI BLOKU 4 ---
                     if rdr.select_tag(raw_uid) == rdr.OK:
                         
-                        # Cílový blok, který chceme zkusit
-                        block_addr =  (STATION_ID*4)
+                        # 2. Autentizace na bloku 4
+                        if rdr.auth(rdr.AUTHENT1A, target_block, KEY, raw_uid) == rdr.OK:
                             
-                        print(f"** Trying Block {block_addr} **")
+                            print(f'Autentizace pro Blok {target_block} OK.')
                             
-                        # 1. AUTENTIZACE
-                        if rdr.auth(rdr.AUTHENT1A, block_addr, KEY, raw_uid) == rdr.OK:
-                            print(f"  -> Authentication success for Block {block_addr}.")
+                            try:
+                                # !!! KLÍČOVÁ ZMĚNA: RDR.READ() VRACÍ POUZE JEDNU HODNOTU (DATA NEBO NONE) !!!
+                                data = rdr.read(target_block) 
+                                rdr.stop_crypto1() # Vždy zastavit šifrování
+                                
+                                if data is not None:
+                                    # Čtení bylo úspěšné
+                                    print(f'** BLOK {target_block} USPESNE PRECTEN **')
+                                    # Data vypisujeme v HEX, aby byla vidět i binární data z vašeho zápisu
+                                    print('Raw Data (HEX):', ''.join(['%02X' % b for b in data]))
+                                    sleep_ms(1000)
+                                else:
+                                    # Čtení selhalo (vráceno None)
+                                    print(f'CHYBA CTENI BLOKU {target_block}: Selhalo čtení dat po autentizaci.')
 
-                            # 2. ZÁPIS DAT
-                            stat_w = rdr.write(block_addr, DATA_TO_WRITE)
-                            
-                            rdr.stop_crypto1() # Zastavit šifrování ihned po zápisu
-                            
-                            if stat_w == rdr.OK:
-                                print(f"  -> SUCCESS: Data written to Block {block_addr}.")
-                            else:
-                                print(f"  -> FAILED: Could not write data to Block {block_addr}.")
+                            except Exception as e:
+                                # Zachycení neočekávané chyby (např. chyba komunikace)
+                                print(f'KRITICKÁ CHYBA KOMUNIKACE: Výjimka při čtení ({type(e).__name__}).')
+                                rdr.stop_crypto1()
                         else:
-                            print(f"  -> ERROR: Authentication failed for Block {block_addr}.")
-                            rdr.stop_crypto1() # Zastavit šifrování
-                        
-                        # Krátká pauza, po které uživatel kartu odebere a znovu přiloží
-                        sleep_ms(2000)
-                        print("\nPrilozte kartu")
+                            print(f'CHYBA CTENI BLOKU {target_block}: Selhala Autentizace.')
+                            rdr.stop_crypto1()
                     else:
-                        print("Failed to select tag")
-
-    except KeyboardInterrupt:
-        print("Bye")
-        
-do_write()
+                         print('CHYBA: Selhalo Select tagu.')
