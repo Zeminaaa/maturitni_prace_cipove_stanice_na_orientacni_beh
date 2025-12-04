@@ -2,6 +2,10 @@ import mfrc522     # https://github.com/cefn/micropython-mfrc522
 from machine import Pin, SPI, PWM
 from time import sleep_ms
 import buzzer_test # Předpokládá se existence tohoto modulu
+import dip_switch_setup
+
+STATION_ID = dip_switch_setup.station_id()
+
 
 # --- Nastavení Hardwaru ---
 buzzer = PWM(Pin(25))
@@ -29,9 +33,6 @@ print('Prilozte kartu')
 KEY = b'\xff\xff\xff\xff\xff\xff'
 # Data pro zápis (musí být přesně 16 bytů)
 DATA_TO_WRITE = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
-# Datové bloky, kam se pokusíme zapsat (Blok 0 je často jen pro čtení/UID)
-# Blok 4 = Sektor 1, Blok 8 = Sektor 2
-TARGET_BLOCKS = [4, 8]
 
 
 def do_write():
@@ -55,7 +56,7 @@ def do_write():
                     if rdr.select_tag(raw_uid) == rdr.OK:
                         
                         # Cílový blok, který chceme zkusit (např. Block 4)
-                        block_addr = 4 
+                        #block_addr =  (STATION_ID*4)
                             
                         print(f"** Trying Block {block_addr} **")
                             
