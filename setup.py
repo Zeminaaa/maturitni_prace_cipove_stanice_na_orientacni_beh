@@ -66,4 +66,3 @@ def station_id():
     binary_string = "".join(map(str, binary_list))
     decimal_num = int(binary_string, 2)
     return(decimal_num)
-
