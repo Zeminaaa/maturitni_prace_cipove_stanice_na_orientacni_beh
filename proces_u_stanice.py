@@ -53,7 +53,7 @@ def read(TARGET_BLOCK,KEY):
                 
                 print('type: 0x%02X' % tag_type)
                 # Upraveno zobrazení UID, protože Mifare Classic má 4 byty.
-                print('uid: %02X-%02X-%02X-%02X' % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                uid=('%02X-%02X-%02X-%02X' % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
                 
                 # --- PRIDANE CTENI BLOKU ---
                 if rdr.select_tag(raw_uid) == rdr.OK:
@@ -70,10 +70,9 @@ def read(TARGET_BLOCK,KEY):
                             
                             if data is not None:
                                 # Čtení bylo úspěšné
-                                setup.ano_sound()
                                 print(f'** BLOK {TARGET_BLOCK} USPESNE PRECTEN **')
                                 # Data vypisujeme v HEX, aby byla vidět i binární data z vašeho zápisu
-                                return(['%02X' % b for b in data])
+                                return(['%02X' % b for b in data],uid)
                                 
                             else:
                                 # Čtení selhalo (vráceno None)
@@ -118,60 +117,84 @@ def uprav_data(time_in_sec,data):
     return DATA_TO_WRITE
 
 def write(TARGET_BLOCK,KEY,data):
-    raw_uid = [0, 0, 0, 0] 
-
-    try:
-        while True:
-            rele.off()
-            (stat, tag_type) = rdr.request(rdr.REQIDL)
-
+    while True:
+        rele.off()
+        (stat, tag_type) = rdr.request(rdr.REQIDL)
+        
+        if stat == rdr.OK:
+            (stat, raw_uid) = rdr.anticoll()
+            
             if stat == rdr.OK:
+                uid=('%02X-%02X-%02X-%02X' % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                break
 
-                (stat, raw_uid_temp) = rdr.anticoll()
+    if uid==UID:
+        try:
+            while True:
+                rele.off()
+                (stat, tag_type) = rdr.request(rdr.REQIDL)
 
                 if stat == rdr.OK:
-                    raw_uid = raw_uid_temp
-                    print("--- New card detected ---")
-                    print("  - uid  : 0x%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
-                    print("")
 
-                    if rdr.select_tag(raw_uid) == rdr.OK:
-                            
-                        print(f"** Trying Block {TARGET_BLOCK} **")
-                            
-                        # 1. AUTENTIZACE
-                        if rdr.auth(rdr.AUTHENT1A, TARGET_BLOCK, KEY, raw_uid) == rdr.OK:
-                            print(f"  -> Authentication success for Block {TARGET_BLOCK}.")
+                    (stat, raw_uid_temp) = rdr.anticoll()
 
-                            # 2. ZÁPIS DAT
-                            stat_w = rdr.write(TARGET_BLOCK, data)
-                            
-                            rdr.stop_crypto1() # Zastavit šifrování ihned po zápisu
-                            
-                            if stat_w == rdr.OK:
-                                print(f"  -> SUCCESS: Data written to Block {TARGET_BLOCK}.")
+                    if stat == rdr.OK:
+                        raw_uid = raw_uid_temp
+                        print("--- New card detected ---")
+                        print("  - uid  : 0x%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                        print("")
+
+                        if rdr.select_tag(raw_uid) == rdr.OK:
+                                
+                            print(f"** Trying Block {TARGET_BLOCK} **")
+                                
+                            # 1. AUTENTIZACE
+                            if rdr.auth(rdr.AUTHENT1A, TARGET_BLOCK, KEY, raw_uid) == rdr.OK:
+                                print(f"  -> Authentication success for Block {TARGET_BLOCK}.")
+
+                                # 2. ZÁPIS DAT
+                                stat_w = rdr.write(TARGET_BLOCK, data)
+                                
+                                rdr.stop_crypto1() # Zastavit šifrování ihned po zápisu
+                                
+                                if stat_w == rdr.OK:
+                                    setup.ano_sound()
+                                    print(f"  -> SUCCESS: Data written to Block {TARGET_BLOCK}.")
+                                    break
+                                else:
+                                    print(f"  -> FAILED: Could not write data to Block {TARGET_BLOCK}.")
+                                    setup.ne_sound()
                             else:
-                                print(f"  -> FAILED: Could not write data to Block {TARGET_BLOCK}.")
+                                print(f"  -> ERROR: Authentication failed for Block {TARGET_BLOCK}.")
+                                rdr.stop_crypto1() # Zastavit šifrování
+                                setup.ne_sound()
+                            
+                            # Krátká pauza, po které uživatel kartu odebere a znovu přiloží
+                            sleep_ms(2000)
+                            print("\nPrilozte kartu")
                         else:
-                            print(f"  -> ERROR: Authentication failed for Block {TARGET_BLOCK}.")
-                            rdr.stop_crypto1() # Zastavit šifrování
-                        
-                        # Krátká pauza, po které uživatel kartu odebere a znovu přiloží
-                        sleep_ms(2000)
-                        print("\nPrilozte kartu")
-                    else:
-                        print("Failed to select tag")
+                            print("Failed to select tag")
+                            setup.ne_sound()
 
-    except KeyboardInterrupt:
-        print("Bye")
-                
+        except KeyboardInterrupt:
+            print("Bye")
+    else:
+        setup.ne_sound()
+        print("Přiložte stejný čip")
+
 # tohle resetuje čtečku čipů, protože po startupu často vubec nereaguje             
 reset_sensor(rst)
 spi = SPI(2, baudrate=2500000, polarity=0, phase=0, sck=Pin(sck), mosi=Pin(mosi), miso=Pin(miso))
               
 # musim si prvně přečíst data z blocku, ten jde pouze přepsat. potřebuju je teda upravit a pak tam writenout novou verzi dat    
 KEY = b'\xff\xff\xff\xff\xff\xff'
-data_z_blocku=read(4,KEY)
+data_z_blocku,UID=read(4,KEY)
 print(data_z_blocku)
-zapisova_data=uprav_data(356,data_z_blocku)
+print(f"UID čipu: {UID}")
+zapisova_data=uprav_data(6532,data_z_blocku)
+
+
+reset_sensor(rst)
+spi = SPI(2, baudrate=2500000, polarity=0, phase=0, sck=Pin(sck), mosi=Pin(mosi), miso=Pin(miso))
+
 write(4,KEY,zapisova_data)
