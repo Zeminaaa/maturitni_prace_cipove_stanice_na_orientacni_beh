@@ -2,7 +2,7 @@ import machine
 import time
 
 G5 = 784
-C6 = 1047 
+C6 = 1047
 E6 = 1319
 G6 = 1568
 G3 = 196
@@ -42,8 +42,20 @@ def ne_sound():
     tone(buzzer, D3, 140)
     time.sleep_ms(40)
     tone(buzzer, F3, 300)
+    
+def sync_confirm():
+    tone(buzzer, C3, 150)
+    time.sleep_ms(20)
+    tone(buzzer, G3, 150)
+    time.sleep_ms(20)
+    tone(buzzer, C6, 150)
+    time.sleep_ms(40)
+    tone(buzzer, G6, 500)
 
 bud_zticha()
+ano_sound()
+time.sleep(1)
+sync_confirm()
 
 
 
