@@ -1,4 +1,4 @@
-"""Pre-vzata externi knihovna pro RC522; nejde o autorske dilo tohoto projektu.
+"""Prevzata externi knihovna pro RC522; nejde o autorske dilo tohoto projektu.
 Puvodni zdroj: https://github.com/cefn/micropython-mfrc522
 """
 
