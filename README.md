@@ -1,6 +1,7 @@
 # Čipové stanice pro orientační běh
 
 Tento repozitář obsahuje jen soubory potřebné pro běh stanic na `ESP32`.
+Součástí repozitáře je také složka `3d_files/` s 3D modely krabičky.
 
 ## Důležitá poznámka k autorství
 
@@ -23,6 +24,12 @@ Projekt v této podobě používá pouze tyto soubory:
 - `web_server.py`
 - `mfrc522.py`
 - `setup.py`
+
+A navíc obsahuje složku:
+
+- `3d_files/`
+  - `case.obj`
+  - `sliding_cover.obj`
 
 ## Který soubor patří na kterou stanici
 
@@ -81,3 +88,13 @@ Na jednom zařízení může být vždy jen jedna varianta hlavního programu:
 - na slave jako `main.py` běží původně `slave_main.py`.
 
 Soubor `main.py` tedy nevzniká ručně zvlášť, ale přejmenováním správného hlavního souboru podle role konkrétní stanice.
+
+## 3D modely krabičky
+
+Ve složce `3d_files/` jsou uloženy dva modely:
+
+- `case.obj`  
+  Hlavní tělo krabičky.
+
+- `sliding_cover.obj`  
+  Posuvné spodní víčko krabičky.
