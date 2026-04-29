@@ -10,16 +10,14 @@ C3 = 131
 D3 = 147
 F3 = 175
 
-# Create a PWM object representing pin 14 and assign it to the buzzer variable
 buzzer = machine.PWM(machine.Pin(25))
 buzzer.duty(0)
 
-# Define a tone function that takes as input a Pin object representing the buzzer, a frequency in Hz, and a duration in milliseconds
 def tone(pin, frequency, duration):
-    pin.freq(frequency) # Set the frequency
-    pin.duty(512) # Set the duty cycle
-    time.sleep_ms(duration) # Pause for the duration in milliseconds
-    pin.duty(0) # Set the duty cycle to 0 to stop the tone
+    pin.freq(frequency)
+    pin.duty(512)
+    time.sleep_ms(duration)
+    pin.duty(0)
 
 def bud_zticha():
     tone(buzzer, C3, 0)
@@ -53,13 +51,12 @@ def sync_confirm():
     tone(buzzer, G6, 500)
 
 bud_zticha()
-ano_sound()
-time.sleep(1)
-sync_confirm()
+
 
 
 
 def station_id():
+    # DIP přepínače používají interní pull-up. Sepnutí tedy stáhne pin na 0.
     bit1 = machine.Pin(13, machine.Pin.IN, machine.Pin.PULL_UP)
     bit2 = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)
     bit3 = machine.Pin(14, machine.Pin.IN, machine.Pin.PULL_UP)

@@ -7,18 +7,25 @@ import setup
 import sys
 import select
 
-# --- NASTAVENÍ HARDWARU ---
-# LED pro indikaci čekání (Lolin=5, DevKit=2)
-# Pokud máš definovanou LED i v setup.py, použij setup.led
-LED_PIN_NUM = 5
+# Samostatná LED pro sync se v aktuálním hardware nepoužívá.
+LED_PIN_NUM = None
+
+
+class _NoLed:
+    def value(self, _value=None):
+        return 0
+
+
+def _sync_led():
+    if LED_PIN_NUM is None:
+        return _NoLed()
+    return machine.Pin(LED_PIN_NUM, machine.Pin.OUT)
 
 def cekat_na_sync():
-    led = machine.Pin(LED_PIN_NUM, machine.Pin.OUT)
-    
-    # 1. Start WiFi (jen pro ESP-NOW)
+    led = _sync_led()
+
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
-    # Odpojíme se od případných AP, abychom mohli měnit kanál
     sta.disconnect() 
     
     try:
@@ -31,7 +38,7 @@ def cekat_na_sync():
     e = espnow.ESPNow()
     e.active(True)
     
-    # DŮLEŽITÉ: Musíme přidat broadcast peer, abychom mohli posílat ACK
+    # Bez broadcast peeru by slave nedokázal poslat potvrzení zpět masteru.
     broadcast = b'\xff' * 6
     try:
         e.add_peer(broadcast)
@@ -42,16 +49,11 @@ def cekat_na_sync():
     
     is_synced = False
     
-    # Blink variables
     last_blink = 0
     led_state = 0
     
     while not is_synced:
-        # 1. Listen (Aggressive)
-        # We listen in short bursts to allow for LED updates, 
-        # but we want to spend most time here.
         try:
-            # Timeout 200ms
             host, msg = e.recv(200) 
             if msg:
                 print(f"[SYNC] Received from {host}")
@@ -66,17 +68,15 @@ def cekat_na_sync():
                 except Exception as ex:
                     print(f"[SYNC] Parse error: {ex}")
         except OSError:
-            pass # Timeout
-            
-        # 2. Handle LED (Non-blocking Blink)
+            pass
+
         now = time.ticks_ms()
-        if time.ticks_diff(now, last_blink) > 250: # Blink every 250ms
+        if time.ticks_diff(now, last_blink) > 250:
             led_state = not led_state
             led.value(led_state)
             last_blink = now
 
-    # 2. Odeslat potvrzení (ACK) Masterovi
-    # Posíláme HNED a OPAKOVANĚ (Redundancy)
+    # ACK se posílá několikrát za sebou, aby ho master snáz zachytil.
     print("--- SENDING ACK ---")
     try:
         my_id = setup.station_id()
@@ -90,14 +90,12 @@ def cekat_na_sync():
     except Exception as e:
         print(f"[SYNC] Chyba odeslání ACK: {e}")
 
-    # 3. Úklid
     try:
         e.active(False)
         sta.active(False)
     except:
         pass
     
-    # 4. Oslavná fanfára
     led.value(0) 
     print("[SYNC] Přehrávám potvrzení...")
     try:
@@ -107,15 +105,15 @@ def cekat_na_sync():
         
     print("[SYNC] Hotovo. Předávám řízení aplikaci.")
 
-def vysilat_cas_loop():
+def vysilat_cas_loop(num_stations=0):
     """
-    Tato funkce běží v nekonečné smyčce a vysílá čas.
-    Používá se na Master stanici na startu.
-    Umožňuje naslouchat na potvrzení od stanic (ACK).
-    """
-    led = machine.Pin(LED_PIN_NUM, machine.Pin.OUT)
+    Jednoduchá blokující synchronizace pro starší způsob ovládání.
 
-    # 1. Start WiFi
+    Master vysílá čas a zároveň čeká na ACK od slave stanic. Pokud je zadaný
+    počet stanic, smyčka skončí sama po přijetí všech potvrzení.
+    """
+    led = _sync_led()
+
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
     sta.disconnect()
@@ -130,7 +128,6 @@ def vysilat_cas_loop():
     e = espnow.ESPNow()
     e.active(True)
 
-    # Přidat broadcast peer (FF:FF:FF:FF:FF:FF)
     broadcast_mac = b'\xff' * 6
     try:
         e.add_peer(broadcast_mac)
@@ -140,20 +137,16 @@ def vysilat_cas_loop():
     print("[MASTER] Začínám vysílat čas. Připojte ostatní desky.")
     print("-----------------------------------------------------")
 
-    # Kolikrát za sekundu kontrolovat příchozí zprávy
-    # Polling rate doesn't matter much if we drain the buffer
     last_send_time = 0
+    synced_ids = set()
 
     while True:
         current_time = time.time()
         
-        # A) Vysílání času (jednou za sekundu)
         if current_time - last_send_time >= 1.0:
             msg = struct.pack('I', int(current_time))
             try:
                 e.send(broadcast_mac, msg)
-                # Vizuální kontrola v konzoli (pro Race Manager parse)
-                # Formát: [MASTER] Odesláno: HH:MM:SS
                 t = time.localtime(current_time)
                 print(f"[MASTER] Odesláno: {t[3]:02}:{t[4]:02}:{t[5]:02}")
                 
@@ -164,37 +157,108 @@ def vysilat_cas_loop():
                  pass
             last_send_time = current_time
 
-        # B) Naslouchání na odpovědi (ACK)
-        # Check ALL messages in buffer
         while True:
             try:
-                # 0 timeout = non-blocking
                 host, msg = e.recv(0) 
                 if msg:
                      if msg.startswith(b'ACK'):
                         try:
                             station_id = msg[3]
-                            # Formát pro PC aplikaci: "SYNCED: <ID>"
-                            print(f"SYNCED: {station_id}")
+                            if station_id not in synced_ids:
+                                synced_ids.add(station_id)
+                                print(f"SYNCED: {station_id}")
+                                print(f"[MASTER] Synchronizovano: {len(synced_ids)}/{num_stations}")
                         except IndexError:
                             pass
                 else:
-                    # No more messages
                     break
             except OSError:
                 break
 
-        # C) Naslouchání na příkazy z PC (přes sériovou linku)
-        if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-            try:
-                line = sys.stdin.readline()
-                if line:
-                    command = line.strip().upper()
-                    if command == "READ":
-                        print("[MASTER] Přijat příkaz READ z PC. Ukončuji synchronizaci.")
-                        break
-            except Exception:
-                pass
+        if num_stations > 0 and len(synced_ids) >= num_stations:
+            print(f"[MASTER] Vsechny stanice ({num_stations}) synchronizovany. Prepinani do READ.")
+            break
 
-        # Krátká pauza pro uvolnění CPU
         time.sleep_ms(50)
+
+
+class MasterSyncManager:
+    """
+    Neblokující synchronizace pro webový režim master stanice.
+
+    Objekt se volá opakovaně z hlavní smyčky. Wi-Fi rozhraní už musí být
+    připravené před vytvořením instance.
+    """
+
+    def __init__(self, num_stations):
+        self.num_stations = num_stations
+        self.synced_ids = set()
+        self.done = False
+        self.led = _sync_led()
+        self._last_send = 0
+        self._broadcast = b'\xff' * 6
+
+        self._e = espnow.ESPNow()
+        self._e.active(True)
+        try:
+            self._e.add_peer(self._broadcast)
+        except Exception:
+            pass
+
+        print(f'[SYNC] MasterSyncManager init pro {num_stations} stanic.')
+
+    def tick(self):
+        """
+        Provede jeden krok synchronizace.
+
+        Vrací True ve chvíli, kdy jsou potvrzené všechny očekávané stanice.
+        """
+        if self.done:
+            return True
+
+        current = time.time()
+
+        if current - self._last_send >= 1.0:
+            msg = struct.pack('I', int(current))
+            try:
+                self._e.send(self._broadcast, msg)
+                t = time.localtime(current)
+                print(f'[MASTER] Odesláno: {t[3]:02}:{t[4]:02}:{t[5]:02}')
+            except OSError:
+                pass
+            self.led.value(0)
+            self._last_send = current
+
+        while True:
+            try:
+                host, msg = self._e.recv(0)
+                if msg:
+                    if msg.startswith(b'ACK'):
+                        try:
+                            sid = msg[3]
+                            if sid not in self.synced_ids:
+                                self.synced_ids.add(sid)
+                                print(f'SYNCED: {sid}')
+                                print(f'[MASTER] Synchronizováno: {len(self.synced_ids)}/{self.num_stations}')
+                        except IndexError:
+                            pass
+                else:
+                    break
+            except OSError:
+                break
+
+        if self.num_stations > 0 and len(self.synced_ids) >= self.num_stations:
+            print(f'[MASTER] Všechny stanice ({self.num_stations}) synchronizovány. Přepínám do READ.')
+            self.done = True
+            self.cleanup()
+            return True
+
+        return False
+
+    def cleanup(self):
+        """Uklidí ESP-NOW, ale nechá běžet Wi-Fi rozhraní."""
+        try:
+            self._e.active(False)
+        except Exception:
+            pass
+        print('[SYNC] Cleanup hotov.')
