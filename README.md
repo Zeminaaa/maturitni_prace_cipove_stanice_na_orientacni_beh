@@ -22,6 +22,7 @@ Projekt v této podobě používá pouze tyto soubory:
 - `sync_manager.py`
 - `web_server.py`
 - `mfrc522.py`
+- `setup.py`
 
 ## Který soubor patří na kterou stanici
 
@@ -34,6 +35,7 @@ Na master stanici se nahrávají tyto soubory:
 - `sync_manager.py`
 - `web_server.py`
 - `mfrc522.py`
+- `setup.py`
 
 Po nahrání je potřeba soubor `master_main.py` na zařízení **přejmenovat na `main.py`**. Teprve pod tímto názvem se po spuštění desky automaticky vykoná.
 
@@ -44,6 +46,7 @@ Na každou slave stanici se nahrávají tyto soubory:
 - `slave_main.py`
 - `sync_manager.py`
 - `mfrc522.py`
+- `setup.py`
 
 Po nahrání je potřeba soubor `slave_main.py` na zařízení **přejmenovat na `main.py`**. Teprve pod tímto názvem se po spuštění desky automaticky vykoná.
 
@@ -66,6 +69,9 @@ Po nahrání je potřeba soubor `slave_main.py` na zařízení **přejmenovat na
 
 - `mfrc522.py`  
   Převzatá knihovna pro komunikaci s RFID čtečkou `RC522`.
+
+- `setup.py`  
+  Sdílené pomocné funkce pro obě stanice, hlavně zvuky buzzeru a čtení ID stanice z DIP přepínačů.
 
 ## Důležité upozornění
 
